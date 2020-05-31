@@ -13,7 +13,6 @@
 
 
 page_count <- function(first_page, bow) {
-  #html_page <- read_html(first_page)
   
   session <- nod(
     bow = ustaven_bow,
@@ -53,13 +52,13 @@ construct_category_urls <- function(page_number, list_url) {
 #' get the urls for the pages holding the judgements
 #'
 #' @param url an url form the category pages of ustavensud.mk
+#' @param bow a bow defined with polite::bow()
 #'
 #' @return a list containing urls
 #' @import rvest, xml2, tidyverse
 #' @export
 
 get_judgement_urls <- function(url, bow) {
-  #html_page <- read_html(url)
   
   session <- nod(
     bow = bow,
@@ -80,6 +79,7 @@ get_judgement_urls <- function(url, bow) {
 #' get the text of the judgement
 #'
 #' @param url an url for the page containing the judgement
+#' @param bow a bow defined with polite::bow()
 #'
 #' @return a character vector with the verditct
 #' @import rvest, xml2, tidyverse
@@ -87,7 +87,6 @@ get_judgement_urls <- function(url, bow) {
 
 
 get_judgement_text <- function(url, bow){
-  #html_page <- read_html(url)
   
   session <- nod(
     bow = bow,
