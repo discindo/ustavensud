@@ -1,0 +1,184 @@
+---
+title: "Scraping the Macedonian Constitutional Court for Insight into its Work"
+author: Novica Nakov
+output: html_notebook
+---
+
+
+
+
+```{r, echo=FALSE}
+library(rvest) # CRAN v0.3.5
+library(polite) # CRAN v0.1.1
+library(tidyverse) # CRAN v1.3.0
+library(xml2) # CRAN v1.3.2
+source("R/functions.R")
+```
+
+Before we begin with the code I thought it would be good to explain my motivation for doing this analysis. Recently I won a [case]{http://ustavensud.mk/?p=19176} at the Macedonian Constitutional Court. I won't go into the legal details here, but from the outset the challenged provision in the Law on execution (if this is an appropriate translation) seemed wrong.  When finally the Court agreed it was wrong, I asked my self, why no one else thought of this before, or even better why did the court wait for someone to appeal before it acts. After all the court has mandate to act on it own. So with this questions in my head I decided to investigate which court decisions are made after appeals from the public, and which are the courts own doing. Enter `R`.
+
+I've never done web scraping before but in general I am familiar with `[rvest](http://rvest.tidyverse.org/)` and I remembered reading about `[polite](https://github.com/dmi3kno/polite)` some time ago, so I thought these should be the tools to get the judgments in some kind of dataframe for further analysis.
+
+
+#Part 1: Scraping the Court
+
+##Baby steps into scraping 
+Beginning with `polite` I set up a `bow` as explained by [Matt Dray](https://www.rostrum.blog/2019/03/04/polite-webscrape/).
+
+```{r, eval = FALSE}
+ustaven_bow <- bow(
+  url = "http://ustavensud.mk/",  # base URL
+  user_agent = "discindo <https://discindo.org>",  # identify ourselves
+  force = TRUE
+)
+```
+
+
+The court issues two types of documents, decisions and judgements (and maybe this is not the best legal translation.) These are separate categories on a WordPress site: `?cat=82` and `?cat=83`. So first I count the number of pages in each category. Each page has 10 documents linked from it. This gives us an idea of the scale of the scraping operation and enables the future steps.
+
+
+```{r, eval=FALSE}
+page_count <- function(first_page, bow) {
+  
+  polite::session <- nod(
+    bow = ustaven_bow,
+    path = first_page
+  )
+  
+  html_page <- polite::scrape(session)
+  
+  page_numbers <- html_page %>% 
+    rvest::html_nodes(css = "a.page-numbers") %>% 
+    rvest::html_attr("href") %>% 
+    stringr::str_extract(., pattern = "(\\d)+$") %>% 
+    as.numeric()
+  
+  return(max(page_numbers))
+}
+```
+
+
+The function above is called with `sapply` to get a named list for the two categories whose first page URLs are in the list `firts_page`.
+
+```{r, eval = FALSE}
+
+first_page <- list(odluki = "?cat=82", resenija = "?cat=83")
+
+category_page_count <- sapply(first_page, page_count, USE.NAMES = TRUE)
+```
+
+Of course, it is possible to see the page count on the website itself. But why spend time clicking. :) 
+
+Then, I create two new lists with all the URLs for the category pages.
+
+```{r, eval = FALSE}
+construct_category_urls <- function(page_number, list_url) {
+  
+  url <- paste0(list_url, "&paged=", page_number)
+  
+  return(url)
+}
+
+cat_odluki_url <- lapply(1:category_page_count[[1]], 
+                  construct_category_urls, first_page[[1]])
+
+cat_resenija_url <- lapply(1:category_page_count[[2]], 
+                    construct_category_urls, first_page[[2]])
+```
+
+This creates lists that look like this:
+
+```
+[[1]]
+[1] "?cat=82&paged=1"
+
+[[2]]
+[1] "?cat=82&paged=2"
+
+[[3]]
+[1] "?cat=82&paged=3"
+```
+
+where each URL leads to a page containg link to the judgements and decisions.
+
+##Getting the URLs for the individual documents
+
+Next we have to scrape each of the above URLs to get another set of lists. For this we use another function.
+
+```{r, eval = FALSE}
+get_judgement_urls <- function(url, bow) {
+  
+  session <- nod(
+    bow = bow,
+    path = url
+  )
+  
+  html_page <- scrape(session)
+
+  page_urls <- html_page %>% 
+    html_nodes(css = "div:nth-child(1) > header:nth-child(1) > h3:nth-child(1) > a:nth-child(1)") %>% 
+    html_attr("href")  %>% 
+    stringr::str_replace(string, pattern = "http://ustavensud.mk/", "")
+    # the str_replace is here to remove the base url alreay in bow()
+  
+  return(page_urls)
+}
+
+urls_odluki <- lapply(cat_odluki_url, get_judgement_urls, ustaven_bow) %>% 
+  unlist()
+
+urls_resenija <- lapply(cat_resenija_url, get_judgement_urls, ustaven_bow) %>% 
+  unlist()
+```
+
+This returns another set of lists that look like this:
+```
+[1] "?p=19246" "?p=19255" "?p=19241" "?p=19180"
+[5] "?p=19176" "?p=18912" "?p=19112" "?p=18758"
+[9] "?p=18756" "?p=18412" "?p=19246" "?p=19255"
+```
+The reason why we truncate the URL like this all the time is that the base URL is already stored in the `bow()`.
+
+
+##Getting the text of the individual documents
+
+Finaly, we use another function to get the text of the judgements and decisions.
+
+```{r, eval = FALSE}
+get_judgement_text <- function(url, bow){
+  #html_page <- read_html(url)
+  
+  session <- nod(
+    bow = bow,
+    path = url
+  )
+  
+  html_page <- scrape(session)
+  
+  text <- html_page %>% 
+    #html_node(".gdlr-blog-content") %>% 
+    html_nodes(css = "p") %>% 
+    html_text(trim = TRUE) 
+  
+  return(text) #[3:4] not sure abut subsetting here. maybe keep the whole text.
+}
+
+text_odluki <- lapply(urls_odluki, get_judgement_text, ustaven_bow) 
+
+text_resenija <- lapply(urls_resenija, get_judgement_text, ustaven_bow) 
+```
+
+Then we construct a dataframe using `purrr:map2_dfr()` and save as RDS, so we dont have to scrape again (in the near future :).
+
+```{r, eval = FALSE}
+
+odluki_df<-map2_dfr(urls_odluki, text_odluki, ~ tibble(url = .x, text = .y))
+
+saveRDS(odluki_df, "odluki_na_ustaven_sud.RDS")
+
+resenija_df<-map2_dfr(urls_resenija, text_resenija, ~ tibble(url = .x, text = .y))
+
+saveRDS(resenija_df, "resenija_na_ustaven_sud.RDS")
+
+```
+
