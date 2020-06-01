@@ -4,9 +4,6 @@ author: Novica Nakov
 output: html_notebook
 ---
 
-
-
-
 ```{r, echo=FALSE}
 library(rvest) # CRAN v0.3.5
 library(polite) # CRAN v0.1.1
@@ -15,14 +12,14 @@ library(xml2) # CRAN v1.3.2
 source("R/functions.R")
 ```
 
-Before we begin with the code I thought it would be good to explain my motivation for doing this analysis. Recently I won a [case]{http://ustavensud.mk/?p=19176} at the Macedonian Constitutional Court. I won't go into the legal details here, but from the outset the challenged provision in the Law on execution (if this is an appropriate translation) seemed wrong.  When finally the Court agreed it was wrong, I asked my self, why no one else thought of this before, or even better why did the court wait for someone to appeal before it acts. After all the court has mandate to act on it own. So with this questions in my head I decided to investigate which court decisions are made after appeals from the public, and which are the courts own doing. Enter `R`.
+Before we begin with the code I thought it would be good to explain my motivation for doing this analysis. Recently I won a [case](http://ustavensud.mk/?p=19176) at the Macedonian Constitutional Court. I won't go into the legal details here, but from the outset the challenged provision in the Law on execution (if this is an appropriate translation) seemed wrong i.e. unconsitutional.  When finally the Court agreed it was wrong, I asked my self, why no one else thought of this before, or even better why did the court wait for someone to appeal before it acts. After all the court has mandate to act on it own. and this was not a new law. So with this questions in my head I decided to investigate which court decisions are made after appeals from the public, and which are the courts own doing. Enter `R`.
 
 I've never done web scraping before but in general I am familiar with `[rvest](http://rvest.tidyverse.org/)` and I remembered reading about `[polite](https://github.com/dmi3kno/polite)` some time ago, so I thought these should be the tools to get the judgments in some kind of dataframe for further analysis.
 
 
-#Part 1: Scraping the Court
+# Part 1: Scraping the Court
 
-##Baby steps into scraping 
+## Baby steps into scraping 
 Beginning with `polite` I set up a `bow` as explained by [Matt Dray](https://www.rostrum.blog/2019/03/04/polite-webscrape/).
 
 ```{r, eval = FALSE}
@@ -40,7 +37,7 @@ The court issues two types of documents, decisions and judgements (and maybe thi
 ```{r, eval=FALSE}
 page_count <- function(first_page, bow) {
   
-  polite::session <- nod(
+  session <- nod(
     bow = ustaven_bow,
     path = first_page
   )
@@ -78,7 +75,9 @@ construct_category_urls <- function(page_number, list_url) {
   
   return(url)
 }
+```
 
+```{r,eval = FALSE}
 cat_odluki_url <- lapply(1:category_page_count[[1]], 
                   construct_category_urls, first_page[[1]])
 
@@ -101,7 +100,7 @@ This creates lists that look like this:
 
 where each URL leads to a page containg link to the judgements and decisions.
 
-##Getting the URLs for the individual documents
+## Getting the URLs for the individual documents
 
 Next we have to scrape each of the above URLs to get another set of lists. For this we use another function.
 
@@ -118,12 +117,14 @@ get_judgement_urls <- function(url, bow) {
   page_urls <- html_page %>% 
     html_nodes(css = "div:nth-child(1) > header:nth-child(1) > h3:nth-child(1) > a:nth-child(1)") %>% 
     html_attr("href")  %>% 
-    stringr::str_replace(string, pattern = "http://ustavensud.mk/", "")
+    stringr::str_replace(., pattern = "http://ustavensud.mk/", replacement = "")
     # the str_replace is here to remove the base url alreay in bow()
   
   return(page_urls)
 }
+```
 
+```{r, eval = FASLE}
 urls_odluki <- lapply(cat_odluki_url, get_judgement_urls, ustaven_bow) %>% 
   unlist()
 
@@ -140,32 +141,32 @@ This returns another set of lists that look like this:
 The reason why we truncate the URL like this all the time is that the base URL is already stored in the `bow()`.
 
 
-##Getting the text of the individual documents
+## Getting the text of the individual documents
 
 Finaly, we use another function to get the text of the judgements and decisions.
 
 ```{r, eval = FALSE}
 get_judgement_text <- function(url, bow){
-  #html_page <- read_html(url)
   
   session <- nod(
     bow = bow,
     path = url
   )
-  
+
   html_page <- scrape(session)
-  
+
   text <- html_page %>% 
-    #html_node(".gdlr-blog-content") %>% 
     html_nodes(css = "p") %>% 
     html_text(trim = TRUE) 
   
   return(text) #[3:4] not sure abut subsetting here. maybe keep the whole text.
 }
+```
 
-text_odluki <- lapply(urls_odluki, get_judgement_text, ustaven_bow) 
+```{r}
+text_odluki <- lapply(urls_odluki, get_judgement_text, bow_ustaven) 
 
-text_resenija <- lapply(urls_resenija, get_judgement_text, ustaven_bow) 
+text_resenija <- lapply(urls_resenija, get_judgement_text, bow_ustaven) 
 ```
 
 Then we construct a dataframe using `purrr:map2_dfr()` and save as RDS, so we dont have to scrape again (in the near future :).
@@ -180,5 +181,35 @@ resenija_df<-map2_dfr(urls_resenija, text_resenija, ~ tibble(url = .x, text = .y
 
 saveRDS(resenija_df, "resenija_na_ustaven_sud.RDS")
 
+```
+
+Before moving to part two I thought I should explain some of my thinking for the above code.
+I decided to scrape (and store) all the text from the court documents, although for the current analysis I probably won't use it all. 
+
+I was struggling to figure out how to keep the column `text` in a nested list so I can easily access the elements I need -- see comment above in the code -- but as I couldn't find a way to do it, I settled with the tibble in long format. I can probably do `group_by("url") %>% nest` at some point if I need that. 
+
+I also decided to store the tibbles in RDS format. I think I read somewhere that RDS is useful beacause of compression. And since I am pushing the code to Github I wanted to be on the save side. Also, I didn't want to rerun the scraping everytime I need to work on the text -- or better said, court decisions come at a rate of few in a month, and scraping daily as we are digging through the text makes little sense.
+
+## Part II: Analyzing the Court's documents.
+
+```{r, echo = FALSE}
+odluki <- readRDS("data/odluki_na_ustaven_sud.RDS")
+resenija <- readRDS("data/resenija_na_ustaven_sud.RDS")
+```
+
+I loaded the RDS files as `odluki` and `resenija` (I am using Macedonian words, because anyway I am not sure of the Enlgish legal translation).
+
+First I think we should look at the structure of a document. 
+
+```{r}
+one <- odluki %>% 
+  group_by(url) %>%
+  nest(data = c(text))
+
+%>% 
+  slice_head(n = 1) %>%
+  ungroup() 
+
+one
 ```
 

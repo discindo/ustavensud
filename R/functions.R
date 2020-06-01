@@ -70,7 +70,7 @@ get_judgement_urls <- function(url, bow) {
   page_urls <- html_page %>% 
     html_nodes(css = "div:nth-child(1) > header:nth-child(1) > h3:nth-child(1) > a:nth-child(1)") %>% 
     html_attr("href") %>% 
-    stringr::str_replace(string, pattern = "http://ustavensud.mk/", "")
+    stringr::str_replace(., pattern = "http://ustavensud.mk/", replacement = "")
   
   return(page_urls)
 }
@@ -96,7 +96,6 @@ get_judgement_text <- function(url, bow){
   html_page <- scrape(session)
   
   text <- html_page %>% 
-    #html_node(".gdlr-blog-content") %>% 
     html_nodes(css = "p") %>% 
     html_text(trim = TRUE) 
   
