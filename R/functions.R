@@ -75,18 +75,18 @@ get_judgement_urls <- function(url, bow) {
   return(page_urls)
 }
 
-#' get_judgement_text
-#' get the text of the judgement
+#' get_judgment_text
+#' get the text of the judgment
 #'
-#' @param url an url for the page containing the judgement
+#' @param url an url for the page containing the judgment
 #' @param bow a bow defined with polite::bow()
 #'
-#' @return a character vector with the verditct
+#' @return a character vector with the verdict
 #' @import rvest, xml2, tidyverse
 #' @export
 
 
-get_judgement_text <- function(url, bow){
+get_judgment_text <- function(url, bow){
   
   session <- nod(
     bow = bow,
@@ -101,3 +101,41 @@ get_judgement_text <- function(url, bow){
   
   return(text) #[3:4] not sure abut subsetting here. maybe keep the whole text.
 }
+
+#' transform_court
+#' make a series of transformations to the original data
+#'
+#' @param tibble a tibble containing the original data
+#'
+#' @return a tibble with 4 variables
+#' @import tidiverse
+#' @export
+
+transform_court <- function(tibble) {
+  tibble %>% 
+    #unnest(url) %>% 
+    unnest_longer(text) %>% 
+    group_by(url) %>% 
+    mutate(p_number = row_number()) %>% 
+    mutate(date = text[str_detect(text, "С к о п ј е")]) %>% 
+    mutate(date = text[str_detect(text, "С к о п ј е")]) %>% 
+    mutate(date = str_split(date, "\n")[[1]][2]) %>% 
+    mutate(date = str_remove(date, "година")) %>% 
+    mutate(date = str_replace(date, "јануари", "January")) %>%
+    mutate(date = str_replace(date, "февруари", "February")) %>%
+    mutate(date = str_replace(date, "март", "March")) %>%
+    mutate(date = str_replace(date, "април", "April")) %>%
+    mutate(date = str_replace(date, "мај", "May")) %>%
+    mutate(date = str_replace(date, "јуни", "June")) %>%
+    mutate(date = str_replace(date, "јули", "July")) %>%
+    mutate(date = str_replace(date, "август", "August")) %>%
+    mutate(date = str_replace(date, "септември", "September")) %>%
+    mutate(date = str_replace(date, "октомври", "October")) %>%
+    mutate(date = str_replace(date, "ноември", "November")) %>%
+    mutate(date = str_replace(date, "декември", "December")) %>% 
+    mutate(date = dmy(date)) %>% 
+    ungroup()
+  
+  return(tibble)
+}
+

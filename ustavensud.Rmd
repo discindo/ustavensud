@@ -9,10 +9,11 @@ library(rvest) # CRAN v0.3.5
 library(polite) # CRAN v0.1.1
 library(tidyverse) # CRAN v1.3.0
 library(xml2) # CRAN v1.3.2
+library(lubridate) # CRAN v1.7.8 
 source("R/functions.R")
 ```
 
-Before we begin with the code I thought it would be good to explain my motivation for doing this analysis. Recently I won a [case](http://ustavensud.mk/?p=19176) at the Macedonian Constitutional Court. I won't go into the legal details here, but from the outset the challenged provision in the Law on execution (if this is an appropriate translation) seemed wrong i.e. unconsitutional.  When finally the Court agreed it was wrong, I asked my self, why no one else thought of this before, or even better why did the court wait for someone to appeal before it acts. After all the court has mandate to act on it own. and this was not a new law. So with this questions in my head I decided to investigate which court decisions are made after appeals from the public, and which are the courts own doing. Enter `R`.
+Before we begin with the code I thought it would be good to explain my motivation for doing this analysis. Recently I won a [case](http://ustavensud.mk/?p=19176) at the Macedonian Constitutional Court. I won't go into the legal details here, but from the outset the challenged provision in the Law on execution (if this is an appropriate translation) seemed wrong i.e. unconstitutional.  When finally the Court agreed it was wrong, I asked my self, why no one else thought of this before, or even better why did the court wait for someone to appeal before it acts. After all the court has mandate to act on it own. and this was not a new law. So with this questions in my head I decided to investigate which court decisions are made after appeals from the public, and which are the courts own doing. Enter `R`.
 
 I've never done web scraping before but in general I am familiar with `[rvest](http://rvest.tidyverse.org/)` and I remembered reading about `[polite](https://github.com/dmi3kno/polite)` some time ago, so I thought these should be the tools to get the judgments in some kind of dataframe for further analysis.
 
@@ -105,7 +106,7 @@ where each URL leads to a page containg link to the judgements and decisions.
 Next we have to scrape each of the above URLs to get another set of lists. For this we use another function.
 
 ```{r, eval = FALSE}
-get_judgement_urls <- function(url, bow) {
+get_judgment_urls <- function(url, bow) {
   
   session <- nod(
     bow = bow,
@@ -163,38 +164,246 @@ get_judgement_text <- function(url, bow){
 }
 ```
 
-```{r}
+```{r, eval = FALSE}
 text_odluki <- lapply(urls_odluki, get_judgement_text, bow_ustaven) 
 
 text_resenija <- lapply(urls_resenija, get_judgement_text, bow_ustaven) 
 ```
 
-Then we construct a dataframe using `purrr:map2_dfr()` and save as RDS, so we dont have to scrape again (in the near future :).
+
+Now it is a good time to save the data. I don't want to rerun the scraping every time I need to work on the text -- or better said, court decisions come at a rate of few in a month, and scraping daily as we are digging through the text makes little sense.
+
+I decided to use the RDS format to store the data. I think I read somewhere that RDS is useful because of compression. And since I am pushing the code to Github I wanted to be on the save side. If someone wants a csv I can provide that.
+
+```{r, eval = FALSE}
+saveRDS(urls_odluki, "data/urls_odluki.rds")
+saveRDS(text_odluki, "data/text_odluki.rds")
+saveRDS(urls_resenija, "data/urls_resenija.rds")
+saveRDS(text_resenija, "data/text_resenija.rds")
+```
+
+
+# Part II: Datawrangling for the desired format
+
+##Example first
+
+With scraping done I was faced with a problem of how to store the scraped data, i.e, what `class` should the data be. Obviously the first choice is just keep the lists as is. This would be a good approach to access specific paragraphs of the text of the documents knowing that they have somewhat fixed structure. For example paragraph 3 is always about who started (submitted) the appeal (which is what we were interested in from the beginning). 
+
+But, it might be useful to have a data frame that will have the URLs as well. That way we will know which text comes from which URL.
+
+The dataframe however poses as some kind of challenge, because there are several ways in which we can construct it and it will have different structure. Let's try to illustrate this with a simple example.
+
+Given the format of our lists:
+
+```{r}
+list_a <- list("url1", "url2", "url3")
+list_b <- list(list("a", "aa", "aaa"), list("b", "bb", "bbb", "bbbb"), list("c", "cc"))
+```
+
+We can use:
+
+```{r}
+tibble(url = list_a, text = list_b)
+```
+And this returns a tibble with the columns as lists. We can easily `unnest()`, but we need to keep some kind of structure in the second column, because we want to get to that third paragraph quickly. 
+
+This gets us half way there:
+
+```{r}
+tibble(url = list_a, text = list_b) %>% 
+  unnest(url)
+```
+
+But a long format tibble with a column for the paragraph number would be really neat.
+
+```{r}
+ tibble(url = list_a, text = list_b) %>% 
+  unnest(url) %>% 
+  unnest_longer(text) %>% 
+  group_by(url) %>% 
+  mutate(p_number = row_number()) %>% 
+  ungroup()
+```
+
+This way we can easily select all third paragraphs using `filter`. But there is one more thing missing in the dataset (well at least for now), and that is the date. 
+
+The date is at the end of each document in a paragraph that looks like this:
+
+```
+[1] "У.бр.115/2019\n14 мај 2020 година\nС к о п ј е"
+```
+
+So first we need to find this paragraph -- different documents have different lengths so the p_number would be different. And then we need to extract the part containing the date, and convert it to type `date`.
+
+Lest change our test lists so they include this paragraph.
+
+```{r}
+list_a <- list("url1", "url2", "url3")
+list_b <- list(list("a", "aa", "aaa", "У.бр.115/2019\n14 мај 2020 година\nС к о п ј е"), 
+          list("b", "bb", "bbb", "bbbb", "У.бр.115/2020\n15 јуни 2020 година\nС к о п ј е"), 
+          list("c", "cc", "У.бр.112/2018\n1 март 2020 година\nС к о п ј е"))
+```
+
+And create a long format tibble as above:
+
+```{r}
+(df <- tibble(url = list_a, text = list_b) %>% 
+  unnest(url) %>% 
+  unnest_longer(text) %>% 
+  group_by(url) %>% 
+  mutate(p_number = row_number()) %>% 
+  ungroup())
+```
+
+Now we need to find each paragraph containing the date and stack it in a new column called `date`. It's still not a real date, but we are getting there.
+
+
+```{r}
+df %>% 
+  group_by(url) %>% 
+  mutate(date = text[str_detect(text, "С к о п ј е")]) %>% 
+  ungroup()
+```
+
+Next we extract the part of the string containing the date. First using `str_split` we split the string into parts ending with newline `\n`, then subset the needed element with [[1]][2].
+
+After that with we clean up the date string with `str_remove`. 
+
+```{r}
+(df <- df %>% 
+  group_by(url) %>% 
+  mutate(date = text[str_detect(text, "С к о п ј е")]) %>% 
+  mutate(date = str_split(date, "\n")[[1]][2]) %>% 
+  mutate(date = str_remove(date, "година")) %>% 
+  ungroup())
+```
+
+
+This leaves us with a date column that makes sense, but is still in the `character` format. So we replace all the Macedonian months with English and `mutate` with `lubridate`. 
+
+```{r}
+(df <- df %>% 
+   group_by(url) %>% 
+   #mutate(date = str_replace(date, "јануари", "January")) %>%
+   #mutate(date = str_replace(date, "февруари", "February")) %>%
+   mutate(date = str_replace(date, "март", "March")) %>%
+   #mutate(date = str_replace(date, "април", "April")) %>%
+   mutate(date = str_replace(date, "мај", "May")) %>%
+   mutate(date = str_replace(date, "јуни", "June")) %>%
+   #mutate(date = str_replace(date, "јули", "July")) %>%
+   #mutate(date = str_replace(date, "август", "August")) %>%
+   #mutate(date = str_replace(date, "септември", "September")) %>%
+   #mutate(date = str_replace(date, "октомври", "October")) %>%
+   #mutate(date = str_replace(date, "ноември", "November")) %>%
+   #mutate(date = str_replace(date, "декември", "December")) %>% 
+   mutate(date = dmy(date)) %>% 
+   ungroup()
+   )
+```
+
+Finally, a dataframe that looks like it hass all the variables we want for this analysis.
+
+## The actual data
+
+Now we need to apply all these transformations to our original data. Here we go. Load what we have saved.
+
+```{r}
+all_rds <- list.files(path = "data", pattern = "*.rds", full.names = TRUE)
+
+text_odluki <- readRDS(all_rds[1])
+text_resenija <- readRDS(all_rds[2])
+urls_odluki <- readRDS(all_rds[3])
+urls_resenija <- readRDS(all_rds[4])
+```
+
+We verify the pairs are of same lenght.
+
+```{r, eval = FALSE}
+all.equal(length(urls_odluki), length(text_odluki))
+
+all.equal(length(urls_resenija), length(text_resenija))
+```
+
+And then we create our tibbles.
+
+```{r}
+odluki <- tibble(url = urls_odluki, text = text_odluki)
+resenija <- tibble(url = urls_resenija, text = text_resenija)
+```
+
+Verify we have all observations.
+
+```{r}
+all.equal(nrow(odluki), length(urls_odluki))
+all.equal(nrow(resenija), length(urls_resenija))
+```
+
+And remove the original lists from memory.
+
+```{r}
+remove(text_odluki)
+remove(text_resenija)
+remove(urls_odluki)
+remove(urls_resenija)
+```
+
+
+Now we need to apply a function to the tibbles that will do all the transformations. We have all the code above, now we just to wrap it in a function.
 
 ```{r, eval = FALSE}
 
-odluki_df<-map2_dfr(urls_odluki, text_odluki, ~ tibble(url = .x, text = .y))
-
-saveRDS(odluki_df, "odluki_na_ustaven_sud.RDS")
-
-resenija_df<-map2_dfr(urls_resenija, text_resenija, ~ tibble(url = .x, text = .y))
-
-saveRDS(resenija_df, "resenija_na_ustaven_sud.RDS")
-
+transform_court <- function(tibble) {
+  tibble %>% 
+  #unnest(url) %>% 
+  unnest_longer(text) %>% 
+  group_by(url) %>% 
+  mutate(p_number = row_number()) %>% 
+  mutate(date = text[str_detect(text, "С к о п ј е")]) #%>% 
+  mutate(date = str_split(date, "\n")[[1]][2]) %>% 
+  mutate(date = str_remove(date, "година")) %>% 
+  mutate(date = str_replace(date, "јануари", "January")) %>%
+  mutate(date = str_replace(date, "февруари", "February")) %>%
+  mutate(date = str_replace(date, "март", "March")) %>%
+  mutate(date = str_replace(date, "април", "April")) %>%
+  mutate(date = str_replace(date, "мај", "May")) %>%
+  mutate(date = str_replace(date, "јуни", "June")) %>%
+  mutate(date = str_replace(date, "јули", "July")) %>%
+  mutate(date = str_replace(date, "август", "August")) %>%
+  mutate(date = str_replace(date, "септември", "September")) %>%
+  mutate(date = str_replace(date, "октомври", "October")) %>%
+  mutate(date = str_replace(date, "ноември", "November")) %>%
+  mutate(date = str_replace(date, "декември", "December")) %>% 
+  mutate(date = dmy(date)) %>% 
+  ungroup()
+  
+  return(tibble)
+}
 ```
 
-Before moving to part two I thought I should explain some of my thinking for the above code.
-I decided to scrape (and store) all the text from the court documents, although for the current analysis I probably won't use it all. 
+And then run.
 
-I was struggling to figure out how to keep the column `text` in a nested list so I can easily access the elements I need -- see comment above in the code -- but as I couldn't find a way to do it, I settled with the tibble in long format. I can probably do `group_by("url") %>% nest` at some point if I need that. 
+```{r eval = FALSE}
 
-I also decided to store the tibbles in RDS format. I think I read somewhere that RDS is useful beacause of compression. And since I am pushing the code to Github I wanted to be on the save side. Also, I didn't want to rerun the scraping everytime I need to work on the text -- or better said, court decisions come at a rate of few in a month, and scraping daily as we are digging through the text makes little sense.
+odluki_long <- transform_court(odluki)
 
-## Part II: Analyzing the Court's documents.
+resenija_long <- transform_court(resenija)
+```
+
+Let's see what we got.
+
+```{r}
+glimpse(odluki_long)
+```
+
+```{r}
+glimpse(resenija_long)
+```
+
+## Part III: Analyzing the Court's documents.
 
 ```{r, echo = FALSE}
-odluki <- readRDS("data/odluki_na_ustaven_sud.RDS")
-resenija <- readRDS("data/resenija_na_ustaven_sud.RDS")
+odluki <- readRDS("data/odluki.rds")
+resenija <- readRDS("data/resenija.rds")
 ```
 
 I loaded the RDS files as `odluki` and `resenija` (I am using Macedonian words, because anyway I am not sure of the Enlgish legal translation).
@@ -212,4 +421,6 @@ one <- odluki %>%
 
 one
 ```
+
+
 
