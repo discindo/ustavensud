@@ -81,7 +81,7 @@ get_judgement_urls <- function(url, bow) {
 #' @param url an url for the page containing the judgment
 #' @param bow a bow defined with polite::bow()
 #'
-#' @return a character vector with the verdict
+#' @return a list with the date and the text of the document
 #' @import rvest, xml2, tidyverse
 #' @export
 
@@ -95,12 +95,21 @@ get_judgment_text <- function(url, bow){
   
   html_page <- scrape(session)
   
+  write_html(html_page, str_remove(url, "\\?p="))
+  
+  date <- html_page %>% 
+    html_node("div.blog-info:nth-child(1) > a:nth-child(2)") %>% 
+    html_text(trim = TRUE) 
+  
   text <- html_page %>% 
     html_nodes(css = "p") %>% 
     html_text(trim = TRUE) 
   
-  return(text) #[3:4] not sure abut subsetting here. maybe keep the whole text.
+  content <- list(date, text)
+  
+  return(content) 
 }
+```
 
 #' transform_court
 #' make a series of transformations to the original data

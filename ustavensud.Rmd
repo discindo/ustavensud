@@ -32,7 +32,7 @@ ustaven_bow <- bow(
 ```
 
 
-The court issues two types of documents, decisions and judgements (and maybe this is not the best legal translation.) These are separate categories on a WordPress site: `?cat=82` and `?cat=83`. So first I count the number of pages in each category. Each page has 10 documents linked from it. This gives us an idea of the scale of the scraping operation and enables the future steps.
+The court issues two types of documents, decisions and judgments (and maybe this is not the best legal translation.) These are separate categories on a WordPress site: `?cat=82` and `?cat=83`. So first I count the number of pages in each category. Each page has 10 documents linked from it. This gives us an idea of the scale of the scraping operation and enables the future steps.
 
 
 ```{r, eval=FALSE}
@@ -144,10 +144,10 @@ The reason why we truncate the URL like this all the time is that the base URL i
 
 ## Getting the text of the individual documents
 
-Finaly, we use another function to get the text of the judgements and decisions.
+Finally, we use another function to get the text of the judgments and decisions.
 
 ```{r, eval = FALSE}
-get_judgement_text <- function(url, bow){
+get_judgment_text <- function(url, bow){
   
   session <- nod(
     bow = bow,
@@ -239,9 +239,11 @@ Lest change our test lists so they include this paragraph.
 
 ```{r}
 list_a <- list("url1", "url2", "url3")
-list_b <- list(list("a", "aa", "aaa", "У.бр.115/2019\n14 мај 2020 година\nС к о п ј е"), 
-          list("b", "bb", "bbb", "bbbb", "У.бр.115/2020\n15 јуни 2020 година\nС к о п ј е"), 
-          list("c", "cc", "У.бр.112/2018\n1 март 2020 година\nС к о п ј е"))
+list_b <- list(list("a", "aa", "aaa", "aaaaaa", 
+                    "У.бр.115/2019\n14 мај 2020 година\nС к о п ј е", "aaaaa"), 
+          list("b", "bb", "bbb", "bbbb", 
+               "У.бр.115/2020\n15 јуни 2020 година\nС к о п ј е", "bbbbb", "bbbbbbb"), 
+          list("c", "cc", "У.бр.112/2018\n1 март 2020 година\nС к о п ј е", "ccccc"))
 ```
 
 And create a long format tibble as above:
@@ -345,10 +347,12 @@ Now we need to apply a function to the tibbles that will do all the transformati
 
 transform_court <- function(tibble) {
   tibble_long <- tibble %>% 
-    #unnest(url) %>% 
+    unnest(url) %>% 
     unnest_longer(text) %>% 
     group_by(url) %>%
     mutate(p_number = row_number()) %>%
+    ungroup() %>% 
+    group_by(url) %>%  
     mutate(date = text[str_detect(text, "С к о п ј е")]) %>%
     mutate(date = str_split(date, "\n")[[1]][2]) %>%
     mutate(date = str_remove(date, "година")) %>%
@@ -380,6 +384,43 @@ odluki_long <- transform_court(odluki)
 resenija_long <- transform_court(resenija)
 ```
 
+And fail. :)
+
+After I spend some time looking at the code and the data I realized that all documents *actually* don't have the same format. A lot of the early decisions from the 1990-ties don't have the paragraph about the date and the signature of the judges like [this one](http://ustavensud.mk/?p=5784) for example. So, going back to scraping. 
+
+I want to keep this issue in the discussion here because projects not always are straight forward. Bad data are everywhere, and mistakes like this can happen.
+
+So, back to scraping. We are adapting the function to extract the date. Also, we are storing all the scraped `html` so that another hiccup doesn't require a fresh scrape.
+
+```{r, eval = FALSE}
+get_judgment_text <- function(url, bow){
+  
+  session <- nod(
+    bow = bow,
+    path = url
+  )
+
+  html_page <- scrape(session)
+  
+  path <- paste0(str_remove(url, "\\?p="), ".html")
+  write_html(html_page, str_remove(url, "\\?p="))
+  
+  date <- html_page %>% 
+    html_node("div.blog-info:nth-child(1) > a:nth-child(2)") %>% 
+    html_text(trim = TRUE) 
+  
+  text <- html_page %>% 
+    html_nodes(css = "p") %>% 
+    html_text(trim = TRUE) 
+  
+  content <- list(date, text)
+  
+  return(content) 
+}
+```
+
+
+
 Let's see what we got.
 
 ```{r}
@@ -392,26 +433,12 @@ glimpse(resenija_long)
 
 ## Part III: Analyzing the Court's documents.
 
-```{r, echo = FALSE}
-odluki <- readRDS("data/odluki.rds")
-resenija <- readRDS("data/resenija.rds")
-```
-
-I loaded the RDS files as `odluki` and `resenija` (I am using Macedonian words, because anyway I am not sure of the Enlgish legal translation).
-
-First I think we should look at the structure of a document. 
-
 ```{r}
-one <- odluki %>% 
-  group_by(url) %>%
-  nest(data = c(text))
-
-%>% 
-  slice_head(n = 1) %>%
-  ungroup() 
-
-one
+odluki <- readRDS("data/odluki_long.rds")
+resenija <- readRDS("data/resenija_long.rds")
 ```
+
+I loaded the RDS files as `odluki` and `resenija` (I am using Macedonian words, because anyway I am not sure of the English legal translation).
 
 
 
