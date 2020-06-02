@@ -284,19 +284,10 @@ This leaves us with a date column that makes sense, but is still in the `charact
 ```{r}
 (df <- df %>% 
    group_by(url) %>% 
-   #mutate(date = str_replace(date, "јануари", "January")) %>%
-   #mutate(date = str_replace(date, "февруари", "February")) %>%
-   mutate(date = str_replace(date, "март", "March")) %>%
-   #mutate(date = str_replace(date, "април", "April")) %>%
-   mutate(date = str_replace(date, "мај", "May")) %>%
-   mutate(date = str_replace(date, "јуни", "June")) %>%
-   #mutate(date = str_replace(date, "јули", "July")) %>%
-   #mutate(date = str_replace(date, "август", "August")) %>%
-   #mutate(date = str_replace(date, "септември", "September")) %>%
-   #mutate(date = str_replace(date, "октомври", "October")) %>%
-   #mutate(date = str_replace(date, "ноември", "November")) %>%
-   #mutate(date = str_replace(date, "декември", "December")) %>% 
-   mutate(date = dmy(date)) %>% 
+      mutate(date = str_replace(date, "март", "March")) %>%
+      mutate(date = str_replace(date, "мај", "May")) %>%
+      mutate(date = str_replace(date, "јуни", "June")) %>%
+      mutate(date = dmy(date)) %>% 
    ungroup()
    )
 ```
@@ -353,30 +344,30 @@ Now we need to apply a function to the tibbles that will do all the transformati
 ```{r, eval = FALSE}
 
 transform_court <- function(tibble) {
-  tibble %>% 
-  #unnest(url) %>% 
-  unnest_longer(text) %>% 
-  group_by(url) %>% 
-  mutate(p_number = row_number()) %>% 
-  mutate(date = text[str_detect(text, "С к о п ј е")]) #%>% 
-  mutate(date = str_split(date, "\n")[[1]][2]) %>% 
-  mutate(date = str_remove(date, "година")) %>% 
-  mutate(date = str_replace(date, "јануари", "January")) %>%
-  mutate(date = str_replace(date, "февруари", "February")) %>%
-  mutate(date = str_replace(date, "март", "March")) %>%
-  mutate(date = str_replace(date, "април", "April")) %>%
-  mutate(date = str_replace(date, "мај", "May")) %>%
-  mutate(date = str_replace(date, "јуни", "June")) %>%
-  mutate(date = str_replace(date, "јули", "July")) %>%
-  mutate(date = str_replace(date, "август", "August")) %>%
-  mutate(date = str_replace(date, "септември", "September")) %>%
-  mutate(date = str_replace(date, "октомври", "October")) %>%
-  mutate(date = str_replace(date, "ноември", "November")) %>%
-  mutate(date = str_replace(date, "декември", "December")) %>% 
-  mutate(date = dmy(date)) %>% 
-  ungroup()
+  tibble_long <- tibble %>% 
+    #unnest(url) %>% 
+    unnest_longer(text) %>% 
+    group_by(url) %>%
+    mutate(p_number = row_number()) %>%
+    mutate(date = text[str_detect(text, "С к о п ј е")]) %>%
+    mutate(date = str_split(date, "\n")[[1]][2]) %>%
+    mutate(date = str_remove(date, "година")) %>%
+    mutate(date = str_replace(date, "јануари", "January")) %>%
+    mutate(date = str_replace(date, "февруари", "February")) %>%
+    mutate(date = str_replace(date, "март", "March")) %>%
+    mutate(date = str_replace(date, "април", "April")) %>%
+    mutate(date = str_replace(date, "мај", "May")) %>%
+    mutate(date = str_replace(date, "јуни", "June")) %>%
+    mutate(date = str_replace(date, "јули", "July")) %>%
+    mutate(date = str_replace(date, "август", "August")) %>%
+    mutate(date = str_replace(date, "септември", "September")) %>%
+    mutate(date = str_replace(date, "октомври", "October")) %>%
+    mutate(date = str_replace(date, "ноември", "November")) %>%
+    mutate(date = str_replace(date, "декември", "December")) %>%
+    mutate(date = dmy(date)) %>%
+    ungroup()
   
-  return(tibble)
+  return(tibble_long)
 }
 ```
 
