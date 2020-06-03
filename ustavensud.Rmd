@@ -99,7 +99,7 @@ This creates lists that look like this:
 [1] "?cat=82&paged=3"
 ```
 
-where each URL leads to a page containg link to the judgements and decisions.
+where each URL leads to a page containg link to the judgments and decisions.
 
 ## Getting the URLs for the individual documents
 
@@ -126,10 +126,10 @@ get_judgment_urls <- function(url, bow) {
 ```
 
 ```{r, eval = FASLE}
-urls_odluki <- lapply(cat_odluki_url, get_judgement_urls, ustaven_bow) %>% 
+urls_odluki <- lapply(cat_odluki_url, get_judgment_urls, ustaven_bow) %>% 
   unlist()
 
-urls_resenija <- lapply(cat_resenija_url, get_judgement_urls, ustaven_bow) %>% 
+urls_resenija <- lapply(cat_resenija_url, get_judgment_urls, ustaven_bow) %>% 
   unlist()
 ```
 
@@ -165,9 +165,9 @@ get_judgment_text <- function(url, bow){
 ```
 
 ```{r, eval = FALSE}
-text_odluki <- lapply(urls_odluki, get_judgement_text, bow_ustaven) 
+text_odluki <- lapply(urls_odluki, get_judgment_text, bow_ustaven) 
 
-text_resenija <- lapply(urls_resenija, get_judgement_text, bow_ustaven) 
+text_resenija <- lapply(urls_resenija, get_judgment_text, bow_ustaven) 
 ```
 
 
@@ -388,7 +388,7 @@ And fail. :)
 
 After I spend some time looking at the code and the data I realized that all documents *actually* don't have the same format. A lot of the early decisions from the 1990-ties don't have the paragraph about the date and the signature of the judges like [this one](http://ustavensud.mk/?p=5784) for example. So, going back to scraping. 
 
-I want to keep this issue in the discussion here because projects not always are straight forward. Bad data are everywhere, and mistakes like this can happen.
+I want to keep this in the discussion here because projects not always are straight forward. Bad data are everywhere, and mistakes like this can happen.
 
 So, back to scraping. We are adapting the function to extract the date. Also, we are storing all the scraped `html` so that another hiccup doesn't require a fresh scrape.
 
@@ -402,8 +402,9 @@ get_judgment_text <- function(url, bow){
 
   html_page <- scrape(session)
   
-  path <- paste0(str_remove(url, "\\?p="), ".html")
-  write_html(html_page, str_remove(url, "\\?p="))
+  path <- paste0("data-raw/", str_remove(url, "\\?p="), ".html")
+  # I moved the types of documents to subfolders for convenience
+  write_html(html_page, path)
   
   date <- html_page %>% 
     html_node("div.blog-info:nth-child(1) > a:nth-child(2)") %>% 
@@ -419,7 +420,81 @@ get_judgment_text <- function(url, bow){
 }
 ```
 
+Rinse and repeat.
 
+```{r}
+all_rds <- list.files(path = "data", pattern = "*.rds", full.names = TRUE)
+
+text_odluki <- readRDS(all_rds[1])
+text_resenija <- readRDS(all_rds[3])
+urls_odluki <- readRDS(all_rds[5])
+urls_resenija <- readRDS(all_rds[6])
+```
+
+We verify the pairs are of same lenght.
+
+```{r, eval = FALSE}
+all.equal(length(urls_odluki), length(text_odluki))
+
+all.equal(length(urls_resenija), length(text_resenija))
+```
+
+And then we create our tibbles.
+
+```{r}
+odluki <- tibble(url = urls_odluki, text = text_odluki)
+resenija <- tibble(url = urls_resenija, text = text_resenija)
+```
+
+Verify we have all observations.
+
+```{r}
+all.equal(nrow(odluki), length(urls_odluki))
+all.equal(nrow(resenija), length(urls_resenija))
+```
+
+And remove the original lists from memory.
+
+```{r}
+remove(text_odluki)
+remove(text_resenija)
+remove(urls_odluki)
+remove(urls_resenija)
+```
+
+
+```{r, eval = FALSE}
+transform_court <- function(tibble) {
+  tibble_long <- tibble %>% 
+    unnest_wider(text) %>% 
+    rename(date = ...1, text = ...2) %>% 
+    unnest_longer(text) %>% 
+    group_by(url) %>%
+    mutate(p_number = row_number()) %>%
+    mutate(date = str_replace(date, "Јан", "January")) %>%
+    mutate(date = str_replace(date, "Фев", "February")) %>%
+    mutate(date = str_replace(date, "Мар", "March")) %>%
+    mutate(date = str_replace(date, "Апр", "April")) %>%
+    mutate(date = str_replace(date, "Мај", "May")) %>%
+    mutate(date = str_replace(date, "Јун", "June")) %>%
+    mutate(date = str_replace(date, "Јул", "July")) %>%
+    mutate(date = str_replace(date, "Авг", "August")) %>%
+    mutate(date = str_replace(date, "Сеп", "September")) %>%
+    mutate(date = str_replace(date, "Окт", "October")) %>%
+    mutate(date = str_replace(date, "Ное", "November")) %>%
+    mutate(date = str_replace(date, "Дек", "December")) %>%
+    mutate(date = dmy(date)) %>%
+    ungroup()
+  
+  return(tibble_long)
+}
+```
+
+```{r eval = FALSE}
+odluki_long <- transform_court(odluki)
+
+resenija_long <- transform_court(resenija)
+```
 
 Let's see what we got.
 
@@ -430,6 +505,14 @@ glimpse(odluki_long)
 ```{r}
 glimpse(resenija_long)
 ```
+
+And finally lets save the tibbles we are happy with.
+
+```{r}
+saveRDS(odluki_long, "data/odluki.rds")
+saveRDS(resenija_long, "data/resenija.rds")
+```
+
 
 ## Part III: Analyzing the Court's documents.
 

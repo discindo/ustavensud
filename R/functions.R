@@ -109,7 +109,7 @@ get_judgment_text <- function(url, bow){
   
   return(content) 
 }
-```
+
 
 #' transform_court
 #' make a series of transformations to the original data
@@ -121,30 +121,27 @@ get_judgment_text <- function(url, bow){
 #' @export
 
 transform_court <- function(tibble) {
-  tibble %>% 
-    #unnest(url) %>% 
+  tibble_long <- tibble %>% 
+    unnest_wider(text) %>% 
+    rename(date = ...1, text = ...2) %>% 
     unnest_longer(text) %>% 
-    group_by(url) %>% 
-    mutate(p_number = row_number()) %>% 
-    mutate(date = text[str_detect(text, "С к о п ј е")]) %>% 
-    mutate(date = text[str_detect(text, "С к о п ј е")]) %>% 
-    mutate(date = str_split(date, "\n")[[1]][2]) %>% 
-    mutate(date = str_remove(date, "година")) %>% 
-    mutate(date = str_replace(date, "јануари", "January")) %>%
-    mutate(date = str_replace(date, "февруари", "February")) %>%
-    mutate(date = str_replace(date, "март", "March")) %>%
-    mutate(date = str_replace(date, "април", "April")) %>%
-    mutate(date = str_replace(date, "мај", "May")) %>%
-    mutate(date = str_replace(date, "јуни", "June")) %>%
-    mutate(date = str_replace(date, "јули", "July")) %>%
-    mutate(date = str_replace(date, "август", "August")) %>%
-    mutate(date = str_replace(date, "септември", "September")) %>%
-    mutate(date = str_replace(date, "октомври", "October")) %>%
-    mutate(date = str_replace(date, "ноември", "November")) %>%
-    mutate(date = str_replace(date, "декември", "December")) %>% 
-    mutate(date = dmy(date)) %>% 
+    group_by(url) %>%
+    mutate(p_number = row_number()) %>%
+    mutate(date = str_replace(date, "Јан", "January")) %>%
+    mutate(date = str_replace(date, "Фев", "February")) %>%
+    mutate(date = str_replace(date, "Мар", "March")) %>%
+    mutate(date = str_replace(date, "Апр", "April")) %>%
+    mutate(date = str_replace(date, "Мај", "May")) %>%
+    mutate(date = str_replace(date, "Јун", "June")) %>%
+    mutate(date = str_replace(date, "Јул", "July")) %>%
+    mutate(date = str_replace(date, "Авг", "August")) %>%
+    mutate(date = str_replace(date, "Сеп", "September")) %>%
+    mutate(date = str_replace(date, "Окт", "October")) %>%
+    mutate(date = str_replace(date, "Ное", "November")) %>%
+    mutate(date = str_replace(date, "Дек", "December")) %>%
+    mutate(date = dmy(date)) %>%
     ungroup()
   
-  return(tibble)
+  return(tibble_long)
 }
 
